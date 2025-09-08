@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <title>مدیریت کارها</title>
+    <style>
+        body { font-family: Tahoma, sans-serif; padding: 10px; background-color: #f9f9f9; }
+        h1 { text-align: center; color: rgb(13, 7, 201); }
+        input, button { padding: 5px; margin: 5px; border-radius: 10px; text-align: right; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 10px; text-align: right;}
+        th { background-color: #eee; }
+        .action-btn { cursor: pointer; color: blue; text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<h1>گزارش کار روزانه محسن</h1>
+
+<input type="text" id="taskName" placeholder="شرح کار">
+<input type="number" id="taskDuration" placeholder="مدت زمان (دقیقه)">
+<button id="addBtn">اضافه کردن کار</button>
+<button id="downloadBtn">دانلود Excel</button>
+
+<table>
+    <thead>
+        <tr>
+            <th>ردیف</th>
+            <th>نام کار</th>
+            <th>مدت زمان</th>
+            <th>تاریخ</th>
+            <th>عملیات</th>
+        </tr>
+    </thead>
+    <tbody id="taskList">
+    </tbody>
+</table>
+
+<!-- SheetJS کتابخانه برای تولید فایل XLSX -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+<script>
+    let tasks = [];
+
+    // تبدیل تاریخ میلادی به شمسی
+    function toJalaali(gy, gm, gd) {
+        var g_d_m = [0,31,59,90,120,151,181,212,243,273,304,334];
+        var gy2 = (gm > 2)? (gy + 1) : gy;
+        var days = 355666 + (365 * gy) + Math.floor((gy2 + 3)/4) - Math.floor((gy2 + 99)/100) + Math.floor((gy2 + 399)/400) + gd + g_d_m[gm-1];
+        var jy = -1595 + 33*Math.floor(days/12053);
+        days %= 12053;
+        jy += 4*Math.floor(days/1461);
+        days %= 1461;
+        if (days > 365) {
+            jy += Math.floor((days-1)/365);
+            days = (days-1)%365;
+        }
+        var jm, jd;
+        if (days < 186) {
+            jm = 1 + Math.floor(days/31);
+            jd = 1 + (days % 31);
+        } else {
+            jm = 7 + Math.floor((days-186)/30);
+            jd = 1 + ((days-186) % 30);
+        }
+        return { jy, jm, jd };
+    }
+
+    function saveTasks() {
+        localStorage.setItem('tasks', JSON.stringify(tasks));
+    }
+
+    function loadTasks() {
+        const saved = localStorage.getItem('tasks');
+        if (saved) tasks = JSON.parse(saved);
+    }
+
+    function renderTasks() {
+        const tbody = document.getElementById("taskList");
+        tbody.innerHTML = "";
+        tasks.forEach((task, index) => {
+            const row = `<tr>
+                            <td>${index + 1}</td>
+                            <td>${task.name}</td>
+                            <td>${task.duration}</td>
+                            <td>${task.date}</td>
+                            <td>
+                                <span class="action-btn" onclick="editTask(${index})">ویرایش</span> |
+                                <span class="action-btn" onclick="deleteTask(${index})">حذف</span>
+                            </td>
+                         </tr>`;
+            tbody.innerHTML += row;
+        });
+    }
+
+    function addTask() {
+        const name = document.getElementById("taskName").value.trim();
+        const duration = document.getElementById("taskDuration").value.trim();
+
+        if (!name || !duration) {
+            alert("لطفاً همه فیلدها را پر کنید!");
+            return;
+        }
+
+        const now = new Date();
+        const jDate = toJalaali(now.getFullYear(), now.getMonth() + 1, now.getDate());
+        const formattedDate = `${jDate.jy}/${String(jDate.jm).padStart(2,'0')}/${String(jDate.jd).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+        tasks.push({ name, duration, date: formattedDate });
+        saveTasks();
+        renderTasks();
+
+        document.getElementById("taskName").value = "";
+        document.getElementById("taskDuration").value = "";
+    }
+
+    function editTask(index) {
+        const task = tasks[index];
+        const newName = prompt("نام جدید کار:", task.name);
+        const newDuration = prompt("مدت زمان جدید (دقیقه):", task.duration);
+
+        if (newName && newDuration) {
+            task.name = newName.trim();
+            task.duration = newDuration.trim();
+            saveTasks();
+            renderTasks();
+        }
+    }
+
+    function deleteTask(index) {
+        if (confirm("آیا مطمئن هستید؟")) {
+            tasks.splice(index, 1);
+            saveTasks();
+            renderTasks();
+        }
+    }
+
+    function downloadExcel() {
+        if (tasks.length === 0) {
+            alert("لیست کارها خالی است!");
+            return;
+        }
+
+        // ساخت داده برای SheetJS
+        const ws_data = [["ردیف","نام کار","مدت زمان","تاریخ شمسی"]];
+        tasks.forEach((task, index) => {
+            ws_data.push([index+1, task.name, task.duration, task.date]);
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(ws_data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Tasks");
+        XLSX.writeFile(wb, "tasks.xlsx");
+    }
+
+    document.getElementById("addBtn").addEventListener("click", addTask);
+    document.getElementById("downloadBtn").addEventListener("click", downloadExcel);
+
+    // بارگذاری اولیه
+    loadTasks();
+    renderTasks();
+</script>
+
+</body>
+</html>
